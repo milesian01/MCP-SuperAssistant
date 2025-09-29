@@ -2,6 +2,7 @@ import type { ParamValueElement } from '../core/types';
 import { StabilizedBlock } from '../core/types';
 import { CONFIG } from '../core/config';
 import { safelySetContent } from '../utils/index';
+import { decodeMcpLiteral } from '../utils/htmlEntityDecoder';
 import { storeExecutedFunction, generateContentSignature } from '../mcpexecute/storage';
 import { checkAndDisplayFunctionHistory, createHistoryPanel, updateHistoryPanel } from './functionHistory';
 
@@ -800,6 +801,10 @@ export const extractFunctionParameters = (rawContent: string): Record<string, an
         console.error(`Failed to extract CDATA content for parameter ${name}:`, e);
         // value already set to original
       }
+    }
+
+    if (typeof value === 'string') {
+      value = decodeMcpLiteral(value);
     }
 
     // Optimized type parsing with pre-compiled regexes

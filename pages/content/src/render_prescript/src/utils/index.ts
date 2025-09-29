@@ -2,6 +2,7 @@
 export * from './dom';
 export * from './performance';
 export * from './themeDetector';
+export * from './htmlEntityDecoder';
 
 // Add a global utility for theme control that can be accessed from the console
 if (typeof window !== 'undefined') {

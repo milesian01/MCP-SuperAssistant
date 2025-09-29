@@ -886,10 +886,12 @@ export function startThemeMonitoring(): void {
     return; // Already monitoring
   }
 
-  let debounceTimeout: number;
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const checkThemeChange = () => {
-    clearTimeout(debounceTimeout);
+    if (debounceTimeout !== null) {
+      clearTimeout(debounceTimeout);
+    }
     debounceTimeout = setTimeout(() => {
       const newThemeState = getCurrentThemeState();
 

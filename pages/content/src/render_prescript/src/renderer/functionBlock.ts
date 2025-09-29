@@ -1,6 +1,7 @@
 import { CONFIG } from '../core/config';
 import { containsFunctionCalls, extractLanguageTag } from '../parser/index';
 import { safelySetContent } from '../utils/index';
+import { decodeMcpLiteral } from '../utils/htmlEntityDecoder';
 import {
   addRawXmlToggle,
   addExecuteButton,
@@ -248,7 +249,7 @@ const CacheUtils = {
       const cdataMatch = REGEX_CACHE.cdataMatch.exec(extractedValue);
       extractedValue = cdataMatch ? cdataMatch[1] : extractedValue.trim();
 
-      parameters[paramName] = extractedValue;
+      parameters[paramName] = decodeMcpLiteral(extractedValue);
     }
 
     cached = {
