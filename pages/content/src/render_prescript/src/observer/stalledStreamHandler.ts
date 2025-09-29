@@ -1,6 +1,10 @@
 import { CONFIG } from '../core/config';
 import { streamingLastUpdated, checkStreamingUpdates } from './streamObserver';
-import { renderedFunctionBlocks, renderFunctionCall } from '../renderer/index';
+import {
+  renderedFunctionBlocks,
+  renderFunctionCall,
+  removeRenderedFunctionBlockReferences,
+} from '../renderer/index';
 
 // Extend Window interface to include our custom properties
 declare global {
@@ -274,6 +278,7 @@ export const checkStalledStreams = (): void => {
     // Check if the block is still in the DOM
     const block = renderedFunctionBlocks.get(blockId);
     if (!block || !document.body.contains(block)) {
+      removeRenderedFunctionBlockReferences(blockId);
       streamingLastUpdated.delete(blockId);
       return;
     }

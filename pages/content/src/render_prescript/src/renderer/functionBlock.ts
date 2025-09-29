@@ -551,6 +551,83 @@ const injectStreamingStyles = (() => {
 // State management for rendered elements
 export const processedElements = new WeakSet<HTMLElement>();
 export const renderedFunctionBlocks = new Map<string, HTMLDivElement>();
+export const renderedFunctionBlocksByLookup = new Map<string, HTMLDivElement>();
+
+const blockIdToLookupKey = new Map<string, string>();
+
+const createLookupKey = (functionName?: string, callId?: string): string | null => {
+  if (!functionName || !callId) return null;
+  return `${functionName}::${callId}`;
+};
+
+export const removeRenderedFunctionBlockReferences = (blockId: string): void => {
+  const lookupKey = blockIdToLookupKey.get(blockId);
+  if (lookupKey) {
+    const trackedBlock = renderedFunctionBlocksByLookup.get(lookupKey);
+    if (!trackedBlock || trackedBlock.getAttribute('data-block-id') === blockId) {
+      renderedFunctionBlocksByLookup.delete(lookupKey);
+    }
+    blockIdToLookupKey.delete(blockId);
+  }
+
+  renderedFunctionBlocks.delete(blockId);
+};
+
+const updateRenderedFunctionBlockTracking = (
+  blockDiv: HTMLDivElement,
+  blockId: string,
+  functionName?: string,
+  callId?: string,
+): void => {
+  const previousBlockId = blockDiv.getAttribute('data-block-id');
+  if (previousBlockId && previousBlockId !== blockId) {
+    removeRenderedFunctionBlockReferences(previousBlockId);
+  }
+
+  blockDiv.setAttribute('data-block-id', blockId);
+  renderedFunctionBlocks.set(blockId, blockDiv);
+
+  if (functionName) {
+    blockDiv.setAttribute('data-function-name', functionName);
+  } else {
+    blockDiv.removeAttribute('data-function-name');
+  }
+
+  const lookupKey = createLookupKey(functionName, callId);
+
+  if (lookupKey && callId) {
+    const previousLookupKeyForBlock = blockIdToLookupKey.get(blockId);
+    if (previousLookupKeyForBlock && previousLookupKeyForBlock !== lookupKey) {
+      const mappedBlock = renderedFunctionBlocksByLookup.get(previousLookupKeyForBlock);
+      if (!mappedBlock || mappedBlock === blockDiv) {
+        renderedFunctionBlocksByLookup.delete(previousLookupKeyForBlock);
+      }
+    }
+
+    const existingBlockForKey = renderedFunctionBlocksByLookup.get(lookupKey);
+    if (existingBlockForKey && existingBlockForKey !== blockDiv) {
+      const existingBlockId = existingBlockForKey.getAttribute('data-block-id');
+      if (existingBlockId) {
+        removeRenderedFunctionBlockReferences(existingBlockId);
+      }
+    }
+
+    renderedFunctionBlocksByLookup.set(lookupKey, blockDiv);
+    blockIdToLookupKey.set(blockId, lookupKey);
+    blockDiv.setAttribute('data-call-id', callId);
+  } else {
+    blockDiv.removeAttribute('data-call-id');
+
+    const previousLookupKey = blockIdToLookupKey.get(blockId);
+    if (previousLookupKey) {
+      const mappedBlock = renderedFunctionBlocksByLookup.get(previousLookupKey);
+      if (!mappedBlock || mappedBlock === blockDiv) {
+        renderedFunctionBlocksByLookup.delete(previousLookupKey);
+      }
+      blockIdToLookupKey.delete(blockId);
+    }
+  }
+};
 
 // Centralized execution tracking system to prevent race conditions and duplicate executions
 interface ExecutionTracker {
@@ -1198,29 +1275,51 @@ export const renderFunctionCall = (block: HTMLPreElement, isProcessingRef: { cur
     }
   }
 
+  const rawContent = block.textContent?.trim() || '';
+  const { tag, content } = extractLanguageTag(rawContent);
+  const { functionName, callId, parameters: partialParameters } = CacheUtils.parseContentEfficiently(
+    block,
+    rawContent,
+  );
+
+  if (!existingDiv) {
+    const lookupKey = createLookupKey(functionName, callId);
+    if (lookupKey) {
+      const lookupCandidate = renderedFunctionBlocksByLookup.get(lookupKey);
+      if (lookupCandidate) {
+        if (document.body.contains(lookupCandidate)) {
+          existingDiv = lookupCandidate;
+        } else {
+          const staleBlockId = lookupCandidate.getAttribute('data-block-id');
+          if (staleBlockId) {
+            removeRenderedFunctionBlockReferences(staleBlockId);
+          }
+        }
+      }
+    }
+  }
+
   if (!existingDiv) {
     isNewRender = true;
-    if (!processedElements.has(block)) {
-      processedElements.add(block);
-      block.setAttribute('data-block-id', blockId);
-    }
   } else {
     previousCompletionStatus = !existingDiv.classList.contains('function-loading');
   }
 
-  const rawContent = block.textContent?.trim() || '';
-  const { tag, content } = extractLanguageTag(rawContent);
-  const { functionName, callId, parameters: partialParameters } = CacheUtils.parseContentEfficiently(block, rawContent);
+  if (!processedElements.has(block)) {
+    processedElements.add(block);
+  }
+  block.setAttribute('data-block-id', blockId);
 
   const blockDiv = existingDiv || DOMUtils.createElement<HTMLDivElement>('div');
+
+  updateRenderedFunctionBlockTracking(blockDiv, blockId, functionName, callId);
 
   // Setup new render
   if (isNewRender) {
     blockDiv.className = 'function-block';
     blockDiv.setAttribute('data-block-id', blockId);
     applyThemeClass(blockDiv);
-    renderedFunctionBlocks.set(blockId, blockDiv);
-    
+
     // Ensure blocks start collapsed by default
     blockDiv.classList.remove('expanded', 'auto-expanded');
   }
@@ -1538,13 +1637,15 @@ export const createOrUpdateParamElement = (
 export const performanceCleanup = {
   clearAllCaches: (): void => {
     renderedFunctionBlocks.clear();
+    renderedFunctionBlocksByLookup.clear();
+    blockIdToLookupKey.clear();
     pendingDOMUpdates.clear();
     activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
     activeTimeouts.clear();
   },
 
   clearBlockCache: (blockId: string): void => {
-    renderedFunctionBlocks.delete(blockId);
+    removeRenderedFunctionBlockReferences(blockId);
     pendingDOMUpdates.delete(blockId);
 
     const timeoutKeysToClean = Array.from(activeTimeouts.keys()).filter(key => key.includes(blockId));
@@ -1561,6 +1662,7 @@ export const performanceCleanup = {
     contentParsingCacheSize: 'WeakMap (size not available - auto-managed)',
     elementQueryCacheSize: 'WeakMap (size not available - auto-managed)',
     renderedFunctionBlocksSize: renderedFunctionBlocks.size,
+    renderedFunctionBlocksByLookupSize: renderedFunctionBlocksByLookup.size,
     pendingDOMUpdatesSize: pendingDOMUpdates.size,
     activeTimeoutsSize: activeTimeouts.size,
   }),

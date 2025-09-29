@@ -1,6 +1,10 @@
 import { CONFIG } from '../core/config';
 import { debounce } from '../utils/index';
-import { renderFunctionCall, renderedFunctionBlocks, processedElements } from '../renderer/index';
+import {
+  renderFunctionCall,
+  processedElements,
+  removeRenderedFunctionBlockReferences,
+} from '../renderer/index';
 import { stabilizeBlock, unstabilizeBlock } from '../renderer/components';
 import {
   monitorNode,
@@ -57,7 +61,7 @@ export const processUpdateQueue = (): void => {
         observer.disconnect();
         streamingObservers.delete(blockId);
       }
-      renderedFunctionBlocks.delete(blockId);
+      removeRenderedFunctionBlockReferences(blockId);
       streamingLastUpdated.delete(blockId);
       if (window._stalledStreams) window._stalledStreams.delete(blockId);
       // Clean up keys starting with blockId- from streamingContentLengths
